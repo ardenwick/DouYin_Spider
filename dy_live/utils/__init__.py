@@ -12,6 +12,9 @@ from .compression import *
 def json_loads_object(s: str | bytes | bytearray):
     return json.loads(s, object_hook=lambda d: SimpleNamespace(**d))
 
+def json_dumps_compact(o: object, **kwargs):
+    kwargs.pop('separators', None)
+    return json.dumps(o, ensure_ascii=False, separators=(',',':'), **kwargs)
 
 def format_readable_time(ts: int, mili=False):
     if isinstance(ts, float):
