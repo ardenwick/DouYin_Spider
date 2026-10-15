@@ -1,16 +1,16 @@
 import hashlib
 import os
-from typing import Any, Callable, List
+from typing import List
 
 from loguru import logger
 from rocksdict import DBCompressionType, Rdict, Options
 
 from google.protobuf.message import Message
-from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.json_format import ParseDict
 from dy_live.protobuf.douyin.bizIm.webcast.data_pb2 import User
 from dy_live.protobuf.douyin.bizIm.webcast import im_pb2 as im
 from dy_live.protobuf.douyin.bizIm.webcast import data_pb2 as data
+from dy_live.utils.message_visitor import *
 
 ''' See gatherUsers() below
 ActivityEmojiGroupsMessage
@@ -77,18 +77,9 @@ ToastMessage
 '''
 
 
-def _isFieldRepeated(field) -> bool:
-    """both map<> and repeated"""
-    try:
-        # TODO upgrade requirement of google protobuf to >= 7.x
-        return field.is_repeated
-    except AttributeError:
-        return field.label == FieldDescriptor.LABEL_REPEATED
-
-
 def clearRepeatedFieldsForMerge(m: Message, m_: Message):
     for field, value in m_.ListFields():
-        if _isFieldRepeated(field):
+        if isRepeatedField(field):
             m.ClearField(field.name)
         elif field.message_type is not None:
             clearRepeatedFieldsForMerge(getattr(m, field.name), value)
@@ -134,75 +125,13 @@ def userFromKnownObjects(o: Message) -> User | None:
     return None
 
 
-def _getMessageField(m: Message, path: str, result: List[Any]):
-    if m is None or path is None:
-        return
-    while (m is not None) and len(path) > 0:
-        dot = path.find('.')
-        dot = len(path) if dot == -1 else dot
-        field, path = path[:dot], path[dot + 1:]
-        if field.endswith('[]'):
-            for e in getattr(m, field[:-2]):
-                _getMessageField(e, path, result)
-            return
-        elif field.endswith('{}'):
-            for e in getattr(m, field[:-2]).values():
-                _getMessageField(e, path, result)
-            return
-        else:
-            if not m.HasField(field):  # field is not set
-                return
-            m = getattr(m, field)
-    result.append(m)
-
-
-def getMessageField(m: Message, path: str) -> List[Any]:
-    result = []
-    _getMessageField(m, path, result)
-    return result
-
-
-def getMessageFields(m: Message, paths: List[str]) -> List[Any]:
-    result = []
-    for path in paths:
-        _getMessageField(m, path, result)
-    return result
-
-
-def visitObjectInMessage(m: Message, Ts: List[type], func: Callable) -> None:
-    """
-    Ts: object types
-    """
-    if type(m) in Ts:
-        func(m)
-        return
-    if not isinstance(m, Message):
-        return
-    for field, value in m.ListFields():
-        if _isFieldRepeated(field):
-            if (field.message_type is not None) and field.message_type.GetOptions().map_entry:  # map<> field
-                for k, v in value.items():
-                    visitObjectInMessage(k, Ts, func)
-                    visitObjectInMessage(v, Ts, func)
-            else:  # repeated field
-                for e in value:
-                    visitObjectInMessage(e, Ts, func)
-        else:
-            visitObjectInMessage(value, Ts, func)
-
-
-def getObjectFromMessageRecursive(m: Message, Ts: List[type]) -> List[Any]:
-    result = []
-    visitObjectInMessage(m, Ts, lambda o: result.append(o))
-    return result
-
-
 class UserDB():
 
     def __init__(self, path: str = './user'):
         os.makedirs(path, exist_ok=True)
         options = Options(raw_mode=False)
         options.set_compression_type(DBCompressionType.zstd())
+        options.set_keep_log_file_num(1)
         options.create_if_missing(True)
         # options.load_latest(db_path)
         self.db = Rdict(path, options=options)
@@ -210,7 +139,7 @@ class UserDB():
 
     def __del__(self):
         if getattr(self, 'db', None):
-            self.db.compact_range(None, None)
+            # self.db.compact_range(None, None)
             self.db.close()
             logger.debug("Closed user database")
 
