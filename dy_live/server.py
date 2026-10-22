@@ -1124,7 +1124,8 @@ class DouyinLive:
     def on_LuckyBoxRewardMessage(self, m: Message):
         """抽奖结果"""
         l: list[str] = m.rewarded_user_id
-        self.log_txt(f"【红包中奖结果】{len(l)}人中奖。中奖用户（或ID）：{' │ '.join([self.nickname_or_id(i) for i in l])}")
+        lucky_hint = '（已中奖！）' if self.my_user_id in l else ''
+        self.log_txt(f"【红包中奖结果{lucky_hint}】{len(l)}人中奖。中奖用户（或ID）：{' │ '.join([self.nickname_or_id(i) for i in l])}")
 
     def on_LotteryEventNewMessage(self, m: Message):
         """福袋"""
@@ -1162,8 +1163,9 @@ class DouyinLive:
             candidate_hint = f'，{candidate_num}人参与'
         except BaseException:
             pass
+        lucky_hint = '（已中奖！）' if self.my_user_id in m.user_ids else ''
         self.log_txt(
-            f"【福袋抽奖结果】{len(m.user_ids)}人中奖{candidate_hint}。"
+            f"【福袋抽奖结果{lucky_hint}】{len(m.user_ids)}人中奖{candidate_hint}。"
             f"中奖用户（或ID）：{' │ '.join([self.nickname_or_id(i) for i in m.user_ids])}")
 
     def on_LinkMessage(self, m: Message):
@@ -1313,7 +1315,7 @@ class DouyinLive:
     def on_NotifyEffectMessage(self, m: Message):
         """特效公告"""
         display_item = find_if(m.text_v2.display_items, lambda e: e.display_item_type == 2)
-        if display_item and len(m.text_v2.display_items) == 1:
+        if display_item:
             self.log_txt('【特效公告】' + render_text(display_item.text_item.text))
         else:
             return False
